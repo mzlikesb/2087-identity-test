@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const QUESTIONS = [
   {
@@ -256,7 +256,234 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState(null);
   const [analyzeText, setAnalyzeText] = useState("");
 
+  const [cardImageUrl, setCardImageUrl] = useState(null);
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const canvasRef = useRef(null);
+
   const accentColor = result ? RESULTS[result].color : "#00ff9d";
+
+  // Load fonts for canvas
+  const loadFonts = useCallback(async () => {
+    const orbitron = new FontFace("Orbitron", "url(https://fonts.gstatic.com/s/orbitron/v31/yMJRMIlzdpvBhQQL_Qq7dy0.woff2)", { weight: "700" });
+    const notoSans = new FontFace("Noto Sans KR", "url(https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLTq8H4hGPNuCEQk-OHO0we3Mg.0.woff2)", { weight: "700" });
+    const notoSansLight = new FontFace("Noto Sans KR", "url(https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLTq8H4hGPNuCEQk-OHO0we3Mg.0.woff2)", { weight: "300" });
+    const shareTech = new FontFace("Share Tech Mono", "url(https://fonts.gstatic.com/s/sharetechmono/v15/J7aHnp1uDWRBEqV98dVQztYldFcLowEF.woff2)");
+    try {
+      await Promise.all([orbitron.load(), notoSans.load(), notoSansLight.load(), shareTech.load()]);
+      document.fonts.add(orbitron);
+      document.fonts.add(notoSans);
+      document.fonts.add(notoSansLight);
+      document.fonts.add(shareTech);
+    } catch (e) {
+      console.log("Font loading partial:", e);
+    }
+  }, []);
+
+  // Generate card image on canvas
+  const generateCardImage = useCallback(async (resultKey) => {
+    setIsGeneratingCard(true);
+    await loadFonts();
+
+    const r = RESULTS[resultKey];
+    const W = 720;
+    const H = 1080;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+
+    // Background gradient
+    const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+    const rgb = hexToRgb(r.color).split(",").map(Number);
+    bgGrad.addColorStop(0, "#0a0a0f");
+    bgGrad.addColorStop(0.5, `rgba(${rgb[0] * 0.1}, ${rgb[1] * 0.1}, ${rgb[2] * 0.1}, 1)`);
+    bgGrad.addColorStop(1, "#0a0a0f");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid pattern
+    ctx.strokeStyle = "rgba(255,255,255,0.03)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = 0; y < H; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    // Scanlines
+    for (let y = 0; y < H; y += 4) {
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
+      ctx.fillRect(0, y, W, 2);
+    }
+
+    // Top accent line
+    const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
+    lineGrad.addColorStop(0, "transparent");
+    lineGrad.addColorStop(0.5, r.color);
+    lineGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(0, 0, W, 3);
+
+    // Glow circle behind icon
+    const glowGrad = ctx.createRadialGradient(W / 2, 280, 0, W / 2, 280, 150);
+    glowGrad.addColorStop(0, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.15)`);
+    glowGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(0, 130, W, 300);
+
+    // Top label
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.textAlign = "center";
+    ctx.fillText("NEURAL IDENTITY PROTOCOL v2.087", W / 2, 50);
+
+    // Decorative corner marks
+    ctx.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.3)`;
+    ctx.lineWidth = 1;
+    // Top-left
+    ctx.beginPath(); ctx.moveTo(30, 70); ctx.lineTo(30, 85); ctx.moveTo(30, 70); ctx.lineTo(45, 70); ctx.stroke();
+    // Top-right
+    ctx.beginPath(); ctx.moveTo(W - 30, 70); ctx.lineTo(W - 30, 85); ctx.moveTo(W - 30, 70); ctx.lineTo(W - 45, 70); ctx.stroke();
+
+    // Year
+    ctx.font = "bold 80px 'Orbitron', monospace";
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.fillText("2087", W / 2, 160);
+
+    // Subtitle line
+    ctx.font = "14px 'Share Tech Mono', monospace";
+    ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.5)`;
+    ctx.fillText("AI가 지배하는 도시에서 당신의 정체", W / 2, 190);
+
+    // Divider
+    const divGrad = ctx.createLinearGradient(W / 2 - 60, 0, W / 2 + 60, 0);
+    divGrad.addColorStop(0, "transparent");
+    divGrad.addColorStop(0.5, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.5)`);
+    divGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = divGrad;
+    ctx.fillRect(W / 2 - 60, 210, 120, 1);
+
+    // Type badge
+    ctx.font = "12px 'Orbitron', monospace";
+    ctx.fillStyle = r.color;
+    ctx.globalAlpha = 0.7;
+    ctx.fillText(r.type, W / 2, 260);
+    ctx.globalAlpha = 1;
+
+    // Icon
+    ctx.font = "64px sans-serif";
+    ctx.fillText(r.icon, W / 2, 340);
+
+    // Title
+    ctx.font = "bold 36px 'Noto Sans KR', sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(r.title, W / 2, 400);
+
+    // Subtitle
+    ctx.font = "300 18px 'Noto Sans KR', sans-serif";
+    ctx.fillStyle = r.color;
+    ctx.fillText(r.subtitle, W / 2, 435);
+
+    // Divider 2
+    ctx.fillStyle = divGrad;
+    ctx.fillRect(W / 2 - 40, 460, 80, 1);
+
+    // Description - word wrap
+    ctx.font = "300 15px 'Noto Sans KR', sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.textAlign = "center";
+    const descLines = wrapText(ctx, r.description, W - 120, 15);
+    let descY = 500;
+    descLines.forEach((line) => {
+      ctx.fillText(line, W / 2, descY);
+      descY += 28;
+    });
+
+    // Trait section
+    const traitY = descY + 30;
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.letterSpacing = "3px";
+    ctx.fillText("CORE_TRAIT", W / 2, traitY);
+    ctx.font = "14px 'Noto Sans KR', sans-serif";
+    ctx.fillStyle = r.color;
+    ctx.fillText(r.trait, W / 2, traitY + 25);
+
+    // Compatibility section
+    const compY = traitY + 60;
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillText("COMPATIBILITY", W / 2, compY);
+    ctx.font = "300 13px 'Noto Sans KR', sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    const compLines = wrapText(ctx, r.compatibility, W - 120, 13);
+    let compTextY = compY + 25;
+    compLines.forEach((line) => {
+      ctx.fillText(line, W / 2, compTextY);
+      compTextY += 24;
+    });
+
+    // Bottom decorative
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillText(`▦ FILE_${resultKey.toUpperCase()}_2087 — END OF RECORD ▦`, W / 2, H - 50);
+
+    // Bottom accent line
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(0, H - 3, W, 3);
+
+    // Side accent lines
+    const sideGrad = ctx.createLinearGradient(0, 0, 0, H);
+    sideGrad.addColorStop(0, "transparent");
+    sideGrad.addColorStop(0.3, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.2)`);
+    sideGrad.addColorStop(0.7, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.2)`);
+    sideGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = sideGrad;
+    ctx.fillRect(0, 0, 1, H);
+    ctx.fillRect(W - 1, 0, 1, H);
+
+    const url = canvas.toDataURL("image/png");
+    setCardImageUrl(url);
+    setIsGeneratingCard(false);
+    return url;
+  }, [loadFonts]);
+
+  // Auto-generate card when result is determined
+  useEffect(() => {
+    if (phase === "result" && result) {
+      generateCardImage(result);
+    }
+  }, [phase, result, generateCardImage]);
+
+  const downloadCard = () => {
+    if (!cardImageUrl) return;
+    const a = document.createElement("a");
+    a.href = cardImageUrl;
+    a.download = `2087_${result}_identity.png`;
+    a.click();
+  };
+
+  const shareCard = async () => {
+    if (!cardImageUrl) return;
+    try {
+      const res = await fetch(cardImageUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `2087_${result}_identity.png`, { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: "2087: AI 도시의 정체성",
+          text: `🌃 2087년, AI 도시에서 나의 정체는... ${RESULTS[result].icon} ${RESULTS[result].type} — ${RESULTS[result].title}`,
+          files: [file],
+        });
+      } else {
+        downloadCard();
+      }
+    } catch (e) {
+      downloadCard();
+    }
+  };
 
   const transition = (callback) => {
     setFadeIn(false);
@@ -865,27 +1092,52 @@ export default function App() {
             </div>
           </div>
 
+          {/* Card Image Preview */}
+          {cardImageUrl && (
+            <div style={{ maxWidth: "360px", width: "100%", position: "relative" }}>
+              <img
+                src={cardImageUrl}
+                alt="Result Card"
+                style={{
+                  width: "100%",
+                  borderRadius: "2px",
+                  border: `1px solid rgba(${hexToRgb(RESULTS[result].color)}, 0.3)`,
+                  boxShadow: `0 0 30px rgba(${hexToRgb(RESULTS[result].color)}, 0.15)`,
+                }}
+              />
+            </div>
+          )}
+          {isGeneratingCard && (
+            <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>
+              카드 생성 중...
+            </div>
+          )}
+
           {/* Action buttons */}
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
             <button
               className="share-btn"
               style={{ "--accent": RESULTS[result].color }}
-              onClick={() => {
-                const text = `🌃 2087년, AI 도시에서 나의 정체는...\n\n${RESULTS[result].icon} ${RESULTS[result].type} — ${RESULTS[result].title}\n"${RESULTS[result].subtitle}"\n\n${RESULTS[result].trait}\n\n너도 테스트 해봐 →`;
-                if (navigator.share) {
-                  navigator.share({ title: "2087: AI 도시의 정체성", text });
-                } else if (navigator.clipboard) {
-                  navigator.clipboard.writeText(text);
-                  alert("결과가 클립보드에 복사되었습니다!");
-                }
-              }}
+              onClick={downloadCard}
+              disabled={!cardImageUrl}
+            >
+              SAVE IMAGE
+            </button>
+            <button
+              className="share-btn"
+              style={{ "--accent": RESULTS[result].color }}
+              onClick={shareCard}
+              disabled={!cardImageUrl}
             >
               SHARE
             </button>
             <button
               className="share-btn"
               style={{ "--accent": RESULTS[result].color }}
-              onClick={restart}
+              onClick={() => {
+                setCardImageUrl(null);
+                restart();
+              }}
             >
               RETRY
             </button>
@@ -905,4 +1157,22 @@ function hexToRgb(hex) {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `${r},${g},${b}`;
+}
+
+function wrapText(ctx, text, maxWidth, fontSize) {
+  const lines = [];
+  let currentLine = "";
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const testLine = currentLine + char;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = char;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
 }
