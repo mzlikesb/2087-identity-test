@@ -258,7 +258,13 @@ export default function App() {
 
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const [toast, setToast] = useState(null);
   const canvasRef = useRef(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const accentColor = result ? RESULTS[result].color : "#00ff9d";
 
@@ -465,23 +471,58 @@ export default function App() {
     a.click();
   };
 
+  const copyImageToClipboard = async () => {
+    if (!cardImageUrl) return;
+    try {
+      const res = await fetch(cardImageUrl);
+      const blob = await res.blob();
+      const pngBlob = new Blob([blob], { type: "image/png" });
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": pngBlob }),
+      ]);
+      showToast("✅ 이미지가 클립보드에 복사됨! 채팅창에 붙여넣기 하세요");
+    } catch (e) {
+      // Fallback: download instead
+      downloadCard();
+      showToast("📥 이미지 다운로드됨! 채팅에 첨부해서 공유하세요");
+    }
+  };
+
+  const copyLinkAndText = async () => {
+    const r = RESULTS[result];
+    const url = window.location.href.split("?")[0];
+    const text = `🌃 2087년, AI 도시에서 나의 정체는...\n\n${r.icon} ${r.type} — ${r.title}\n"${r.subtitle}"\n\n${r.trait}\n\n너도 테스트 해봐 → ${url}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("✅ 텍스트+링크 복사됨! 채팅창에 붙여넣기 하세요");
+    } catch (e) {
+      // Fallback: prompt
+      prompt("복사해서 공유하세요:", text);
+    }
+  };
+
   const shareCard = async () => {
     if (!cardImageUrl) return;
     try {
       const res = await fetch(cardImageUrl);
       const blob = await res.blob();
       const file = new File([blob], `2087_${result}_identity.png`, { type: "image/png" });
+      const r = RESULTS[result];
+      const url = window.location.href.split("?")[0];
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           title: "2087: AI 도시의 정체성",
-          text: `🌃 2087년, AI 도시에서 나의 정체는... ${RESULTS[result].icon} ${RESULTS[result].type} — ${RESULTS[result].title}`,
+          text: `🌃 ${r.icon} ${r.type} — ${r.title}\n"${r.subtitle}"\n\n너도 해봐 → ${url}`,
           files: [file],
         });
       } else {
-        downloadCard();
+        // Desktop fallback — copy image
+        await copyImageToClipboard();
       }
     } catch (e) {
-      downloadCard();
+      if (e.name !== "AbortError") {
+        await copyImageToClipboard();
+      }
     }
   };
 
@@ -1114,33 +1155,57 @@ export default function App() {
           )}
 
           {/* Action buttons */}
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
-            <button
-              className="share-btn"
-              style={{ "--accent": RESULTS[result].color }}
-              onClick={downloadCard}
-              disabled={!cardImageUrl}
-            >
-              SAVE IMAGE
-            </button>
-            <button
-              className="share-btn"
-              style={{ "--accent": RESULTS[result].color }}
-              onClick={shareCard}
-              disabled={!cardImageUrl}
-            >
-              SHARE
-            </button>
-            <button
-              className="share-btn"
-              style={{ "--accent": RESULTS[result].color }}
-              onClick={() => {
-                setCardImageUrl(null);
-                restart();
-              }}
-            >
-              RETRY
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center", width: "100%", maxWidth: "480px" }}>
+            {/* Primary share row */}
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", width: "100%" }}>
+              <button
+                className="share-btn"
+                style={{ "--accent": RESULTS[result].color, flex: "1", minWidth: "140px" }}
+                onClick={copyImageToClipboard}
+                disabled={!cardImageUrl}
+              >
+                📋 이미지 복사
+              </button>
+              <button
+                className="share-btn"
+                style={{ "--accent": RESULTS[result].color, flex: "1", minWidth: "140px" }}
+                onClick={copyLinkAndText}
+              >
+                🔗 텍스트+링크 복사
+              </button>
+            </div>
+            {/* Secondary row */}
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", width: "100%" }}>
+              <button
+                className="share-btn"
+                style={{ "--accent": RESULTS[result].color, flex: "1", minWidth: "90px" }}
+                onClick={downloadCard}
+                disabled={!cardImageUrl}
+              >
+                💾 저장
+              </button>
+              <button
+                className="share-btn"
+                style={{ "--accent": RESULTS[result].color, flex: "1", minWidth: "90px" }}
+                onClick={shareCard}
+                disabled={!cardImageUrl}
+              >
+                📤 공유
+              </button>
+              <button
+                className="share-btn"
+                style={{ "--accent": RESULTS[result].color, flex: "1", minWidth: "90px" }}
+                onClick={() => {
+                  setCardImageUrl(null);
+                  restart();
+                }}
+              >
+                🔄 다시
+              </button>
+            </div>
+            <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", fontFamily: "'Noto Sans KR', sans-serif", textAlign: "center", lineHeight: 1.7 }}>
+              카톡 · 디코 · 텔레 → "이미지 복사" 후 채팅창에 붙여넣기
+            </div>
           </div>
 
           <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.15)", fontFamily: "'Share Tech Mono', monospace", marginTop: "12px" }}>
@@ -1148,6 +1213,33 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "30px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(0,0,0,0.85)",
+            backdropFilter: "blur(10px)",
+            border: `1px solid ${accentColor}`,
+            color: "#fff",
+            padding: "12px 24px",
+            borderRadius: "4px",
+            fontFamily: "'Noto Sans KR', sans-serif",
+            fontSize: "13px",
+            zIndex: 9999,
+            boxShadow: `0 0 20px rgba(0,0,0,0.5), 0 0 10px ${accentColor}33`,
+            animation: "toastIn 0.3s ease",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {toast}
+        </div>
+      )}
+      <style>{`@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }`}</style>
     </div>
   );
 }
